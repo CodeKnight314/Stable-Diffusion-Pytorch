@@ -1,4 +1,6 @@
-diffuser
+diffusers
 torch
 torchvision
 transformers
+pandas
+accelerate
