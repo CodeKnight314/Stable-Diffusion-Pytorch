@@ -24,7 +24,7 @@ class StableDiffusion:
                 subfolder="text_encoder"
             ).to(device)
             
-            self.tokenzier = CLIPTokenizer.from_pretrained(
+            self.tokenizer = CLIPTokenizer.from_pretrained(
                 model_id, 
                 subfolder="tokenizer"
             )
