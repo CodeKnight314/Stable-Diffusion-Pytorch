@@ -31,8 +31,11 @@ class Flickr30K(Dataset):
     def __init__(self, root: str, csv_path: str, size: Tuple[int] = (512, 512)): 
         super().__init__() 
         
-        self.dir = glob(os.path.join(root, "/*.jpg"))
-        self.csv = pd.read_csv(csv_path)
+        self.dir = glob(os.path.join(root, "*.jpg"))
+        self.csv = pd.read_csv(csv_path, sep='|', encoding='utf-8')
+        self.csv.columns = self.csv.columns.str.strip()
+        self.csv['comment'] = self.csv['comment'].str.replace(r'\s+\.', '.', regex=True)        
+        
         self.transform = T.Compose([T.Resize((size)), T.ToTensor()])
         
     def __len__(self): 
@@ -44,7 +47,8 @@ class Flickr30K(Dataset):
         img_tensor = self.transform(img)
         
         comments = self.csv[self.csv['image_name'] == file_name]
-        prompt = comments[comments['comment_number'] == random.randint(0, 5)]['caption'].iloc[0]
+        comment_index = random.randint(0, len(comments['comment']) - 1)
+        prompt = comments['comment'].iloc[comment_index]
         
         return img_tensor, prompt
     
@@ -53,7 +57,7 @@ def load_FFHQ_dataset(root: str, size: Tuple[int], batch_size: int):
     return DataLoader(dataset, batch_size, shuffle=True, num_workers=os.cpu_count(), pin_memory=True)
 
 def load_Flickr30k(root: str, csv_path: str, size: Tuple[int], batch_size: int): 
-    dataset = Flickr30K(root, csv_path, size, batch_size)
+    dataset = Flickr30K(root, csv_path, size)
     return DataLoader(dataset, batch_size, shuffle=True, num_workers=os.cpu_count(), pin_memory=True)
 
 if __name__ == "__main__": 
