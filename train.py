@@ -7,6 +7,8 @@ from torch.optim import AdamW
 from diffusers import DDPMScheduler
 from tqdm import tqdm 
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 def train(
     model: StableDiffusion,
     train_dl: DataLoader,
@@ -49,14 +51,15 @@ def train(
                              desc=f"[Epoch {epoch}] Fine-tuning {'Conditional' if model.use_conditioning else 'Unconditional'} StableDiffusion"):
             if model.use_conditioning:
                 img, prompt = data
-                text_embeddings = model.prepare_text_embeddings(prompt)
+                text_embeddings = model.prepare_text_embeddings(prompt).to(device)
             else:
                 img = data
                 text_embeddings = None
             
+            img = img.to(device)
             latents = model.encode_images(img)
             
-            noise = torch.randn_like(latents)
+            noise = torch.randn_like(latents).to(device)
             timesteps = torch.randint(
                 0, noise_scheduler.num_train_timesteps, (latents.shape[0],),
                 device=latents.device
@@ -101,8 +104,11 @@ if __name__ == "__main__":
     parser.add_argument("--root", type=str, help="Root directory to dataset")
     parser.add_argument("--epoch", type=int, default=100, help="Number of epochs for fine tuning")
     parser.add_argument("--condition", type=bool, action="store_true", help="Toggle option for conditioning Diffusion Model")
+    parser.add_argument("--mp", action="store_true", help="Toggle option for mixed precision")
+    parser.add_argument("--g_step", type=int, default=5, help="Configurable gradient accumulation step")
+    parser.add_argument("--s_step", type=int, default=100, help="Configurable save step for checkpointing")
     parser.add_argument("--lr", type=float, defulat=1e-4, help="Learning rate for optimizer")
-    
+    parser.add_argument("--save", type=str, help="Save Path for checkpoints")
     parser.add_argument("--id", type=str, default="CompVis/stable-diffusion-v1-4", help="Optional ID for diffuser to load")
     parser.add_argument("--size", type=int, default=512, help="Patch size for Diffusion Model and dataset")
     parser.add_argument("--batch", type=int, default=4, help="Batch size for dataset")
@@ -110,15 +116,17 @@ if __name__ == "__main__":
     args = parser.parse_args() 
     
     if args.condition: 
-        train_dl = load_Flickr30k(root=args.root, csv_path=os.path.join(args.root, "results.csv"), batch_size=args.batch)
+        train_dl = load_Flickr30k(root=args.root, csv_path=os.path.join(args.root, "results.csv"), size=(args.size, args.size), batch_size=args.batch)
     else: 
-        train_dl = load_FFHQ_dataset(root=args.root, size=args.size, batch_size=args.batch)
+        train_dl = load_FFHQ_dataset(root=args.root, size=(args.size, args.size), batch_size=args.batch)
         
     model = StableDiffusion(
       model_id=args.id,
       use_conditioning=args.condition,
       train_text_encoder=False,
       sample_size=args.size
-    )
+    ).to(device)
+    
+    train(model, train_dl, args.save, args.epoch, args.lr, args.mp, args.g_step, args.s_step)
     
     
