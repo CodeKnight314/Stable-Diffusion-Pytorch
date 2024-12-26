@@ -7,6 +7,7 @@ from glob import glob
 from PIL import Image
 import pandas as pd
 import random
+import argparse
 
 # https://www.kaggle.com/datasets/arnaud58/flickrfaceshq-dataset-ffhq
 class FFHQ(Dataset): 
@@ -54,3 +55,25 @@ def load_FFHQ_dataset(root: str, size: Tuple[int], batch_size: int):
 def load_Flickr30k(root: str, csv_path: str, size: Tuple[int], batch_size: int): 
     dataset = Flickr30K(root, csv_path, size, batch_size)
     return DataLoader(dataset, batch_size, shuffle=True, num_workers=os.cpu_count(), pin_memory=True)
+
+if __name__ == "__main__": 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root")
+    parser.add_argument("--condition", action="store_true", help="Toggle option for condition/unconditioned image datasets")
+    parser.add_argument("--size", type=int, default=512, help="Patch size for image samples")
+    parser.add_argument("--batch", type=int, default=8, help="Batch size for image dataset")
+    args = parser.parse_args() 
+    
+    if args.condition: 
+        dataset = load_Flickr30k(args.root, os.path.join(args.root, "results.csv"), (args.size, args.size), args.batch)
+    else: 
+        dataset = load_FFHQ_dataset(args.root, (args.size, args.size), args.batch)
+        
+    data = next(iter(dataset))
+    if args.condition: 
+        img, prompt = data 
+        print(f"Image shape from Conditional Image dataset: ", img.shape)
+        print(f"Prompt: {prompt}")
+    else: 
+        img = data
+        print(f"Image shape from Unconditional Image dataset: ", img.shape)
