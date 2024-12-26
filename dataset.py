@@ -8,6 +8,7 @@ from PIL import Image
 import pandas as pd
 import random
 
+# https://www.kaggle.com/datasets/arnaud58/flickrfaceshq-dataset-ffhq
 class FFHQ(Dataset): 
     def __init__(self, root: str, size: Tuple[int] = (512, 512)): 
         super().__init__()
