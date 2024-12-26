@@ -1,0 +1,4 @@
+diffuser
+torch
+torchvision
+transformers
