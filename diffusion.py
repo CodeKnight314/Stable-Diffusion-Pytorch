@@ -82,6 +82,41 @@ class StableDiffusion:
         if self.use_conditioning:
             self.text_encoder.save_pretrained(f"{save_path}/text_encoder")
             self.tokenizer.save_pretrained(f"{save_path}/tokenizer")
+    
+    def load_from_pretrained(self, save_path: str, device: str = "cuda", sample_size: int = 64):
+        try:
+            self.unet = UNet2DConditionModel.from_pretrained(
+                f"{save_path}/unet"
+            ).to(device)
+        except Exception as e: 
+            print("[ERROR] Loading unet weights encountered error. See below for details: ")
+            print(e)
+        
+        try:
+            self.vae = AutoencoderKL.from_pretrained(
+                f"{save_path}/vae"
+            ).to(device)
+        except Exception as e: 
+            print("[ERROR] Loading vae weights encountered error. See below for details: ")
+            print(e)
+        
+        try:
+            self.text_encoder = CLIPTextModel.from_pretrained(
+                f"{save_path}/text_encoder"
+            ).to(device)
+        except Exception as e: 
+            print("[ERROR] Loading text encoder weights encountered error. See below for details: ")
+            print(e)
+        
+        try:
+            self.tokenizer = CLIPTokenizer.from_pretrained(
+                f"{save_path}/tokenizer"
+            )
+        except Exception as e: 
+            print("[ERROR] Loading tokenizer weights encountered error. See below for details: ")
+            print(e)
+        
+        print(f"[INFO] Loaded weights from {save_path} successfully.")
             
 if __name__ == "__main__": 
     model = StableDiffusion(
