@@ -10,7 +10,6 @@ def inference(
     model : StableDiffusion,
     prompt: str = None,
     num_train_steps: int = 1000,
-    num_images: int = 1,
 ):
     """
     Perform inference (image generation) using a StableDiffusion model and the DDPMScheduler.
@@ -36,11 +35,11 @@ def inference(
     else:
         text_embedding = None
     
-    batch_size = num_images
+    batch_size = 1
     latents = torch.randn(
         (
             batch_size,
-            model.unet.in_channels,
+            model.unet.config.in_channels,
             model.unet.sample_size,
             model.unet.sample_size,
         ),
@@ -101,11 +100,9 @@ if __name__ == "__main__":
     if args.weight is not None:
         model.load_from_pretrained(args.weight)
     
-    images = inference(
-        model,
-        prompt=args.prompt,
-        num_train_steps=args.steps,
-        num_images=args.num_images,
-    )
+    images = []
+    for i in range(args.num_images):
+        img = inference(model, prompt=args.prompt, num_train_steps=args.steps, num_images=args.num_images,)
+        images.append(img)
     
     save_images(images, args.output)
