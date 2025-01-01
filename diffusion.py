@@ -64,7 +64,7 @@ class StableDiffusion:
         return latents
     
     def predict_noise(self, latents, timesteps, text_embeddings=None):
-        if self.use_conditioning:
+        if self.use_conditioning and text_embeddings is not None:
             return self.unet(latents, timesteps, encoder_hidden_states=text_embeddings).sample
         else:
             return self.unet(latents, timesteps).sample
