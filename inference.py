@@ -7,6 +7,19 @@ from tqdm import tqdm
 from utils import save_images
 
 def inference(model: StableDiffusion, prompt: str, scheduler: DDIMScheduler, guidance_scale: float = 7.5):
+    """
+    Function to generate images using the Stable Diffusion Model with the given prompt and scheduler. 
+    Optionally, guidance scale can be set to control the influence of the prompt on the generated image.
+    
+    Args:
+        model (StableDiffusion): Stable Diffusion Model
+        prompt (str): Text Prompt for the model
+        scheduler (DDIMScheduler): DDIM Scheduler for the diffusion process
+        guidance_scale (float): Guidance Scale for the prompt
+    
+    Returns:
+        Image: Generated Image from the Stable Diffusion Model
+    """
     if model.use_conditioning and prompt is not None:
         uncond_embeddings = model.prepare_text_embeddings("")
         text_embeddings = model.prepare_text_embeddings(prompt)
@@ -22,7 +35,7 @@ def inference(model: StableDiffusion, prompt: str, scheduler: DDIMScheduler, gui
     
     latents = latents * scheduler.init_noise_sigma
     
-    for step in tqdm(scheduler.timesteps):
+    for step in tqdm(scheduler.timesteps, desc="[INFO] Generating Image"):
         if model.use_conditioning and prompt is not None:
             latent_model_input = torch.cat([latents] * 2)
             time_tensor = torch.tensor([step] * latent_model_input.shape[0], device=model.device)
@@ -88,7 +101,7 @@ if __name__ == "__main__":
     
     images = []
     for i in range(args.num_images):
-        sample = inference(model, prompt=args.prompt, num_train_steps=args.steps, scheduler=scheduler)
+        sample = inference(model, prompt=args.prompt, scheduler=scheduler)
         images.append(sample)
     
     save_images(images, args.output)
