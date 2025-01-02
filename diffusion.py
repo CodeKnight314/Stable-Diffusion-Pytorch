@@ -33,7 +33,13 @@ class StableDiffusion:
                 if "attn2" in name:
                     module.register_forward_hook(lambda m, i, o: (None,))
     
-    def freeze_parameter(self, train_text_encoder: bool): 
+    def freeze_parameter(self, train_text_encoder : bool):
+        """
+        Freeze the parameters of the model
+        
+        Args:
+            train_text_encoder (bool): Flag to freeze or unfreeze the text encoder
+        """ 
         for params in self.vae.parameters(): 
             params.requires_grad = False 
             
@@ -41,7 +47,13 @@ class StableDiffusion:
             for param in self.text_encoder.parameters():
                 param.requires_grad = False 
                 
-    def prepare_text_embeddings(self, prompt):
+    def prepare_text_embeddings(self, prompt : str):
+        """
+        Prepare text embeddings for the model
+        
+        Args:
+            prompt (str): Text prompt to encode
+        """
         if not self.use_conditioning:
             return None
             
