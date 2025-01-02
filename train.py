@@ -4,7 +4,7 @@ import argparse
 import os
 from diffusion import StableDiffusion
 from torch.optim import AdamW 
-from diffusers import DDPMScheduler, DDIMScheduler
+from diffusers import DDPMScheduler, DDIMScheduler, PNDMScheduler
 from tqdm import tqdm 
 from utils import EarlyStopping, save_images
 from inference import inference
@@ -26,14 +26,16 @@ def train(model: StableDiffusion, train_dl: DataLoader, save_path: str, epochs: 
         save_step: Number of steps between saving checkpoints
     """
     
-    noise_scheduler = DDIMScheduler(
+    noise_scheduler = PNDMScheduler(
         num_train_timesteps=1000,
         beta_start=0.00085,
-        beta_end=0.008,
+        beta_end=0.012,
+        beta_schedule="scaled_linear",
+        steps_offset=1,
+        skip_prk_steps=True,
         clip_sample=True,
         set_alpha_to_one=True,
-        steps_offset=1,
-        prediction_type="epsilon",
+        prediction_type="epsilon"
     )
     
     optimizer = AdamW(
@@ -166,7 +168,7 @@ if __name__ == "__main__":
     parser.add_argument("--s_step", type=int, default=100, help="Configurable save step for checkpointing")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate for optimizer")
     parser.add_argument("--save", type=str, help="Save Path for checkpoints")
-    parser.add_argument("--id", type=str, default="CompVis/stable-diffusion-v1-4", help="Optional ID for diffuser to load")
+    parser.add_argument("--id", type=str, default="runwayml/stable-diffusion-v1-5", help="Optional ID for diffuser to load")
     parser.add_argument("--size", type=int, default=512, help="Patch size for Diffusion Model and dataset")
     parser.add_argument("--batch", type=int, default=4, help="Batch size for dataset")
     
@@ -182,7 +184,7 @@ if __name__ == "__main__":
         use_conditioning=args.condition,
         device=device,
         train_text_encoder=False,
-        sample_size=args.size
+        sample_size=args.size // 8
     )
     
     train(model, train_dl, args.save, args.epoch, args.lr, args.mp, args.g_step, args.s_step)
