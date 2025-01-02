@@ -29,10 +29,11 @@ def train(model: StableDiffusion, train_dl: DataLoader, save_path: str, epochs: 
     noise_scheduler = DDIMScheduler(
         num_train_timesteps=1000,
         beta_start=0.00085,
-        beta_end=0.012,
-        clip_sample=False,
-        set_alpha_to_one=False,
+        beta_end=0.008,
+        clip_sample=True,
+        set_alpha_to_one=True,
         steps_offset=1,
+        prediction_type="epsilon",
     )
     
     optimizer = AdamW(
