@@ -1,5 +1,5 @@
 import torch
-from diffusers import DDPMScheduler, DDIMScheduler
+from diffusers import DDPMScheduler, DDIMScheduler, PNDMScheduler
 from PIL import Image
 import argparse
 from diffusion import StableDiffusion
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     model = StableDiffusion(
-        model_id="CompVis/stable-diffusion-v1-4",
+        model_id="runwayml/stable-diffusion-v1-5",
         use_conditioning=args.condition,
         train_text_encoder=False,
         sample_size=args.size // 8,
@@ -88,13 +88,12 @@ if __name__ == "__main__":
     if args.weight is not None:
         model.load_from_pretrained(args.weight)
     
-    scheduler = DDIMScheduler(
-        num_train_timesteps=1000,
+    scheduler = PNDMScheduler(
         beta_start=0.00085,
         beta_end=0.012,
-        clip_sample=False,
-        set_alpha_to_one=False,
-        steps_offset=1,
+        beta_schedule="scaled_linear",
+        num_train_timesteps=1000,
+        skip_prk_steps=True
     )
     
     scheduler.set_timesteps(args.steps)
