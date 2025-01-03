@@ -6,6 +6,7 @@ class StableDiffusion:
     def __init__(self, model_id: str, use_conditioning: bool = True, device: str = "cuda", sample_size: int = 64, train_text_encoder=False): 
         self.device = device 
         self.use_conditioning = use_conditioning
+        self.sample_size = sample_size
         
         self.vae = AutoencoderKL.from_pretrained(
             model_id, 
@@ -129,7 +130,24 @@ class StableDiffusion:
             print(e)
         
         print(f"[INFO] Loaded weights from {save_path} successfully.")
-            
+      
+def load_diffusion(config):
+    print(f"Loading StableDiffusion model with the following parameters:")
+    print(f"----------------------------------------")
+    print(f"Model ID:           {config['model_id']}")
+    print(f"Use Conditioning:   {config['use_conditioning']}")
+    print(f"Sample Size:        {config['sample_size']}")
+    print(f"Train Text Encoder: {config['train_text_encoder']}")
+    print(f"----------------------------------------")
+    
+    model = StableDiffusion(
+        model_id=config["model_id"],
+        use_conditioning=config["use_conditioning"],
+        sample_size=config["sample_size"],
+        train_text_encoder=config["train_text_encoder"]
+    )
+    return model
+
 if __name__ == "__main__": 
     model = StableDiffusion(
       model_id="CompVis/stable-diffusion-v1-4",
