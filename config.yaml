@@ -1,0 +1,31 @@
+g_step: 1
+s_step: 4000
+batch: 8
+mixed_precision: True
+image_size: 512
+
+model_params: 
+  model_id: "runwayml/stable-diffusion-v1-5"
+  sample_size: 64
+  use_conditioning: True 
+  train_text_encoder: False
+
+optimizer:
+  class: "torch.optim.Adam"
+  params:
+    betas: [0.9, 0.999]
+    weight_decay: 0.01
+    lr: 1e-5
+    eps: 1e-8
+
+noise_scheduler: 
+  class: "diffusers.schedulers.DDIMScheduler"
+  params:
+    beta_schedule: "linear"
+    beta_start: 0.00085
+    beta_end: 0.012
+    num_train_timesteps: 1000
+    clip_sample: True
+    set_alpha_to_one: True
+    steps_offset: 0
+    prediction_type: "epsilon"
