@@ -51,14 +51,42 @@ class Flickr30K(Dataset):
         prompt = comments['comment'].iloc[comment_index]
         
         return img_tensor, prompt
+
+def text_image_collate_fn(batch): 
+    """
+    Collate function for text-image datasets
     
+    Args:
+        batch (list): List of tuples containing image and prompt
+    """
+    images = [item[0] for item in batch]
+    prompts = [item[1] for item in batch]
+    return torch.stack(images), prompts
+
 def load_FFHQ_dataset(root: str, size: Tuple[int], batch_size: int): 
+    """
+    Load FFHQ dataset
+    
+    Args:
+        root (str): Root directory of the dataset containing images  
+        size (Tuple[int]): Size of the image samples for resizing
+        batch_size (int): Batch size for the dataset
+    """
     dataset = FFHQ(root, size)
     return DataLoader(dataset, batch_size, shuffle=True, num_workers=os.cpu_count(), pin_memory=True)
 
 def load_Flickr30k(root: str, csv_path: str, size: Tuple[int], batch_size: int): 
+    """
+    Load Flickr30k dataset
+    
+    Args:
+        root (str): Root directory of the dataset containing images  
+        csv_path (str): Path to the CSV file containing the prompts for the associated images
+        size (Tuple[int]): Size of the image samples for resizing
+        batch_size (int): Batch size for the dataset
+    """
     dataset = Flickr30K(root, csv_path, size)
-    return DataLoader(dataset, batch_size, shuffle=True, num_workers=os.cpu_count(), pin_memory=True)
+    return DataLoader(dataset, batch_size, shuffle=True, num_workers=os.cpu_count(), collate_fn=text_image_collate_fn, pin_memory=True)
 
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
