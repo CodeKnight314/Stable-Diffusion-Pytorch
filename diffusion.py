@@ -1,13 +1,10 @@
 import torch
-from diffusers import AutoencoderKL, UNet2DConditionModel, DDPMScheduler
+import torch.nn as nn
+from diffusers import AutoencoderKL, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
 
 class StableDiffusion: 
-    def __init__(self, model_id: str, use_conditioning: bool = True, device: str = "cuda", sample_size: int = 64, train_text_encoder=False): 
-        self.device = device 
-        self.use_conditioning = use_conditioning
-        self.sample_size = sample_size
-        
+    def __init__(self, model_id: str, use_conditioning: bool = True, device: str = "cuda", sample_size: int = 64, train_text_encoder=False):     
         self.vae = AutoencoderKL.from_pretrained(
             model_id, 
             subfolder="vae"
@@ -29,10 +26,11 @@ class StableDiffusion:
                 model_id, 
                 subfolder="tokenizer"
             )
-        else: 
-            for name, module in self.unet.named_modules():
-                if "attn2" in name:
-                    module.register_forward_hook(lambda m, i, o: (None,))
+
+        self.embedding_dim = self.unet.config.cross_attention_dim
+        self.device = device 
+        self.use_conditioning = use_conditioning
+        self.sample_size = sample_size
     
     def freeze_parameter(self, train_text_encoder : bool):
         """
@@ -77,10 +75,15 @@ class StableDiffusion:
         return latents
     
     def predict_noise(self, latents, timesteps, text_embeddings=None):
-        if self.use_conditioning and text_embeddings is not None:
+        if self.use_conditioning:
             return self.unet(latents, timesteps, encoder_hidden_states=text_embeddings).sample
         else:
-            return self.unet(latents, timesteps).sample
+            batch_size = latents.shape[0]
+            dummy_embeddings = torch.zeros(
+                (batch_size, 77, self.embedding_dim),
+                device=self.device
+            )
+            return self.unet(latents, timesteps, encoder_hidden_states=dummy_embeddings).sample
 
     def get_trainable_params(self):
         params = []
@@ -132,20 +135,22 @@ class StableDiffusion:
         print(f"[INFO] Loaded weights from {save_path} successfully.")
       
 def load_diffusion(config):
-    print(f"Loading StableDiffusion model with the following parameters:")
-    print(f"----------------------------------------")
-    print(f"Model ID:           {config['model_id']}")
-    print(f"Use Conditioning:   {config['use_conditioning']}")
-    print(f"Sample Size:        {config['sample_size']}")
-    print(f"Train Text Encoder: {config['train_text_encoder']}")
-    print(f"----------------------------------------")
-    
     model = StableDiffusion(
         model_id=config["model_id"],
         use_conditioning=config["use_conditioning"],
         sample_size=config["sample_size"],
         train_text_encoder=config["train_text_encoder"]
     )
+    
+    model.freeze_parameter(config["train_text_encoder"])
+    
+    print(f"----------------------------------------")
+    print(f"Loading StableDiffusion model with the following parameters:")
+    print(f"Model ID:           {config['model_id']}")
+    print(f"Use Conditioning:   {config['use_conditioning']}")
+    print(f"Sample Size:        {config['sample_size']}")
+    print(f"Train Text Encoder: {config['train_text_encoder']}")
+    print(f"----------------------------------------")
     return model
 
 if __name__ == "__main__": 
