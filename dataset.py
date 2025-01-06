@@ -6,51 +6,28 @@ from torchvision import transforms as T
 from glob import glob 
 from PIL import Image
 import pandas as pd
-import random
 import argparse
 
-# https://www.kaggle.com/datasets/arnaud58/flickrfaceshq-dataset-ffhq
-class FFHQ(Dataset): 
-    def __init__(self, root: str, size: Tuple[int] = (512, 512)): 
+class ImageCaptionDataset(Dataset):
+    def __init__(self, root_dir: str, csv_path: str, size: Tuple[int] = (512, 512)):
         super().__init__()
         
-        self.root = root
-        self.dir = glob(os.path.join(root, "/*.png"))
+        self.root_dir = root_dir 
+        self.csv = pd.read_csv(csv_path)
+        self.dir = glob(os.path.join(root_dir, "*.jpg")) + glob(os.path.join(root_dir, "*.png"))
+        
         self.transform = T.Compose([T.Resize(size), T.ToTensor()])
-        
+    
     def __len__(self): 
         return len(self.dir)
     
     def __getitem__(self, index):
-        img = Image.open(self.dir[index]).convert("RGB")
-        img_tensor = self.transform(img)
-        return img_tensor
-    
-# https://www.kaggle.com/datasets/hsankesara/flickr-image-dataset
-class Flickr30K(Dataset):
-    def __init__(self, root: str, csv_path: str, size: Tuple[int] = (512, 512)): 
-        super().__init__() 
-        
-        self.dir = glob(os.path.join(root, "*.jpg"))
-        self.csv = pd.read_csv(csv_path, sep='|', encoding='utf-8')
-        self.csv.columns = self.csv.columns.str.strip()
-        self.csv['comment'] = self.csv['comment'].str.replace(r'\s+\.', '.', regex=True)        
-        
-        self.transform = T.Compose([T.Resize((size)), T.ToTensor()])
-        
-    def __len__(self): 
-        return len(self.dir)
-    
-    def __getitem__(self, index):
-        file_name = os.path.basename(self.dir[index])
-        img = Image.open(self.dir[index]).convert("RGB")
+        path = self.dir[index]
+        img = Image.open(path).convert("RGB")
         img_tensor = self.transform(img)
         
-        comments = self.csv[self.csv['image_name'] == file_name]
-        comment_index = random.randint(0, len(comments['comment']) - 1)
-        prompt = comments['comment'].iloc[comment_index]
-        
-        return img_tensor, prompt
+        caption = self.csv[self.csv['image'] == os.path.basename(path)]['caption'].values[0]
+        return img_tensor, caption
 
 def text_image_collate_fn(batch): 
     """
@@ -63,21 +40,9 @@ def text_image_collate_fn(batch):
     prompts = [item[1] for item in batch]
     return torch.stack(images), prompts
 
-def load_FFHQ_dataset(root: str, size: Tuple[int], batch_size: int): 
+def load_dataset(root: str, csv_path: str, size: Tuple[int], batch_size: int): 
     """
-    Load FFHQ dataset
-    
-    Args:
-        root (str): Root directory of the dataset containing images  
-        size (Tuple[int]): Size of the image samples for resizing
-        batch_size (int): Batch size for the dataset
-    """
-    dataset = FFHQ(root, size)
-    return DataLoader(dataset, batch_size, shuffle=True, num_workers=os.cpu_count(), pin_memory=True)
-
-def load_Flickr30k(root: str, csv_path: str, size: Tuple[int], batch_size: int): 
-    """
-    Load Flickr30k dataset
+    Load image-caption dataset
     
     Args:
         root (str): Root directory of the dataset containing images  
@@ -85,7 +50,7 @@ def load_Flickr30k(root: str, csv_path: str, size: Tuple[int], batch_size: int):
         size (Tuple[int]): Size of the image samples for resizing
         batch_size (int): Batch size for the dataset
     """
-    dataset = Flickr30K(root, csv_path, size)
+    dataset = ImageCaptionDataset(root, csv_path, size)
     return DataLoader(dataset, batch_size, shuffle=True, num_workers=os.cpu_count(), collate_fn=text_image_collate_fn, pin_memory=True)
 
 if __name__ == "__main__": 
@@ -96,16 +61,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch", type=int, default=8, help="Batch size for image dataset")
     args = parser.parse_args() 
     
-    if args.condition: 
-        dataset = load_Flickr30k(args.root, os.path.join(args.root, "results.csv"), (args.size, args.size), args.batch)
-    else: 
-        dataset = load_FFHQ_dataset(args.root, (args.size, args.size), args.batch)
-        
+    dataset = load_dataset(args.root, "data/dataset.csv", (args.size, args.size), args.batch)
     data = next(iter(dataset))
-    if args.condition: 
-        img, prompt = data 
-        print(f"Image shape from Conditional Image dataset: ", img.shape)
-        print(f"Prompt: {prompt}")
-    else: 
-        img = data
-        print(f"Image shape from Unconditional Image dataset: ", img.shape)
+    img, prompt = data 
+    print(f"Image shape from Conditional Image dataset: ", img.shape)
+    print(f"Prompt: {prompt}")
