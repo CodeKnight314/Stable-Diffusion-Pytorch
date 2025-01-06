@@ -4,7 +4,7 @@ from diffusers import AutoencoderKL, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
 
 class StableDiffusion: 
-    def __init__(self, model_id: str, use_conditioning: bool = True, device: str = "cuda", sample_size: int = 64, train_text_encoder=False):     
+    def __init__(self, model_id: str, device: str = "cuda", sample_size: int = 64, train_text_encoder=False):     
         self.vae = AutoencoderKL.from_pretrained(
             model_id, 
             subfolder="vae"
@@ -16,20 +16,18 @@ class StableDiffusion:
             sample_size=sample_size
         ).to(device)
         
-        if use_conditioning: 
-            self.text_encoder = CLIPTextModel.from_pretrained(
-                model_id, 
-                subfolder="text_encoder"
-            ).to(device)
-            
-            self.tokenizer = CLIPTokenizer.from_pretrained(
-                model_id, 
-                subfolder="tokenizer"
-            )
+        self.text_encoder = CLIPTextModel.from_pretrained(
+            model_id, 
+            subfolder="text_encoder"
+        ).to(device)
+        
+        self.tokenizer = CLIPTokenizer.from_pretrained(
+            model_id, 
+            subfolder="tokenizer"
+        )
 
         self.embedding_dim = self.unet.config.cross_attention_dim
         self.device = device 
-        self.use_conditioning = use_conditioning
         self.sample_size = sample_size
     
     def freeze_parameter(self, train_text_encoder : bool):
@@ -42,7 +40,7 @@ class StableDiffusion:
         for params in self.vae.parameters(): 
             params.requires_grad = False 
             
-        if self.use_conditioning and not train_text_encoder:
+        if not train_text_encoder:
             for param in self.text_encoder.parameters():
                 param.requires_grad = False 
                 
@@ -52,10 +50,7 @@ class StableDiffusion:
         
         Args:
             prompt (str): Text prompt to encode
-        """
-        if not self.use_conditioning:
-            return None
-            
+        """ 
         text_input = self.tokenizer(
             prompt,
             padding="max_length",
@@ -75,7 +70,7 @@ class StableDiffusion:
         return latents
     
     def predict_noise(self, latents, timesteps, text_embeddings=None):
-        if self.use_conditioning:
+        if text_embeddings is not None:
             return self.unet(latents, timesteps, encoder_hidden_states=text_embeddings).sample
         else:
             batch_size = latents.shape[0]
@@ -88,14 +83,14 @@ class StableDiffusion:
     def get_trainable_params(self):
         params = []
         params.extend(self.unet.parameters())
-        if self.use_conditioning and self.text_encoder.parameters():
+        if self.text_encoder.parameters():
             params.extend(self.text_encoder.parameters())
         return params
 
     def save_pretrained(self, save_path):
         self.unet.save_pretrained(f"{save_path}/unet")
         self.vae.save_pretrained(f"{save_path}/vae")
-        if self.use_conditioning:
+        if self.tokenizer and self.text_encoder:
             self.text_encoder.save_pretrained(f"{save_path}/text_encoder")
             self.tokenizer.save_pretrained(f"{save_path}/tokenizer")
     
@@ -137,7 +132,6 @@ class StableDiffusion:
 def load_diffusion(config):
     model = StableDiffusion(
         model_id=config["model_id"],
-        use_conditioning=config["use_conditioning"],
         sample_size=config["sample_size"],
         train_text_encoder=config["train_text_encoder"]
     )
@@ -147,7 +141,6 @@ def load_diffusion(config):
     print(f"----------------------------------------")
     print(f"Loading StableDiffusion model with the following parameters:")
     print(f"Model ID:           {config['model_id']}")
-    print(f"Use Conditioning:   {config['use_conditioning']}")
     print(f"Sample Size:        {config['sample_size']}")
     print(f"Train Text Encoder: {config['train_text_encoder']}")
     print(f"----------------------------------------")
@@ -156,7 +149,6 @@ def load_diffusion(config):
 if __name__ == "__main__": 
     model = StableDiffusion(
       model_id="CompVis/stable-diffusion-v1-4",
-      use_conditioning=True,
       train_text_encoder=True,
       sample_size=64
     )
