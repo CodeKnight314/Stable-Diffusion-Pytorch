@@ -1,7 +1,7 @@
 import torch
 import argparse
 import os
-from dataset import load_FFHQ_dataset, load_Flickr30k, DataLoader
+from dataset import DataLoader, load_dataset
 from diffusion import load_diffusion, StableDiffusion
 from tqdm import tqdm
 from utils import EarlyStopping, save_images, load_config, load_module, load_optimizer
@@ -34,21 +34,14 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
         global_step = 0
         for epoch in range(epochs):
             model.unet.train()
-            if model.use_conditioning and config["model_params"]["train_text_encoder"]:
+            if config["model_params"]["train_text_encoder"]:
                 model.text_encoder.train()
 
             epoch_loss = 0.0
-            for step, data in tqdm(
-                enumerate(train_dl),
-                total=len(train_dl),
-                desc=f"[Epoch {epoch}] Fine-tuning {'Conditional' if model.use_conditioning else 'Unconditional'} StableDiffusion",
-            ):
-                if model.use_conditioning:
-                    img, prompt = data
-                    text_embeddings = model.prepare_text_embeddings(prompt).to(device)
-                else:
-                    img = data
-                    text_embeddings = None
+            for step, data in tqdm(enumerate(train_dl), total=len(train_dl),
+                                   desc=f"[Epoch {epoch}] Fine-tuning Conditional StableDiffusion"):
+                img, prompt = data
+                text_embeddings = model.prepare_text_embeddings(prompt).to(device)
 
                 img = img.to(device)
                 latents = model.encode_images(img)
@@ -91,28 +84,17 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                     noise_scheduler.set_timesteps(100)
                     data = next(iter(train_dl))
                     pil_images = []
-
-                    if model.use_conditioning:
-                        img, text = data
-                        for prompt in text:
-                            pil_images.append(
-                                inference(
-                                    model,
-                                    prompt=prompt,
-                                    scheduler=noise_scheduler,
-                                    guidance_scale=7.5,
-                                )
+    
+                    img, text = data
+                    for prompt in text:
+                        pil_images.append(
+                            inference(
+                                model,
+                                prompt=prompt,
+                                scheduler=noise_scheduler,
+                                guidance_scale=7.5,
                             )
-                    else:
-                        for _ in range(img.shape[0]):
-                            pil_images.append(
-                                inference(
-                                    model,
-                                    prompt=None,
-                                    scheduler=noise_scheduler,
-                                    guidance_scale=7.5,
-                                )
-                            )
+                        )
 
                     save_images(pil_images, os.path.join(save_path, f"checkpoint-{global_step}-samples/"))
 
@@ -134,6 +116,7 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=str, help="Root directory to dataset")
+    parser.add_argument("--csv", type=str, help="Path to CSV file containing image captions")
     parser.add_argument("--epoch", type=int, default=10, help="Number of epochs for fine-tuning")
     parser.add_argument("--save", type=str, help="Save Path for checkpoints")
     parser.add_argument("--config", type=str, help="Path to configuration file")
@@ -142,18 +125,6 @@ if __name__ == "__main__":
     config = load_config(args.config)
 
     model = load_diffusion(config["model_params"])
-    if model.use_conditioning:
-        train_dl = load_Flickr30k(
-            root=args.root,
-            csv_path=os.path.join(args.root, "results.csv"),
-            size=(config["image_size"], config["image_size"]),
-            batch_size=config["batch"],
-        )
-    else:
-        train_dl = load_FFHQ_dataset(
-            root=args.root,
-            size=(config["image_size"], config["image_size"]),
-            batch_size=config["batch"],
-        )
+    train_dl = load_dataset(args.root, args.csv, config["image_size"], config["batch"])
 
     train(model, train_dl, config, args.save, args.epoch)
