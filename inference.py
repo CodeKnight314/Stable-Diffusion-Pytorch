@@ -20,7 +20,7 @@ def inference(model: StableDiffusion, prompt: str, scheduler: DDIMScheduler, gui
     Returns:
         Image: Generated Image from the Stable Diffusion Model
     """
-    if model.use_conditioning and prompt is not None:
+    if prompt is not None:
         uncond_embeddings = model.prepare_text_embeddings("")
         text_embeddings = model.prepare_text_embeddings(prompt)
         text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
@@ -36,7 +36,7 @@ def inference(model: StableDiffusion, prompt: str, scheduler: DDIMScheduler, gui
     latents = latents * scheduler.init_noise_sigma
     
     for step in tqdm(scheduler.timesteps, desc="[INFO] Generating Image"):
-        if model.use_conditioning and prompt is not None:
+        if prompt is not None:
             latent_model_input = torch.cat([latents] * 2)
             time_tensor = torch.tensor([step] * latent_model_input.shape[0], device=model.device)
         else:
@@ -46,7 +46,7 @@ def inference(model: StableDiffusion, prompt: str, scheduler: DDIMScheduler, gui
         with torch.no_grad():
             noise_pred = model.predict_noise(latent_model_input, time_tensor, text_embeddings)
 
-        if model.use_conditioning and prompt is not None:
+        if prompt is not None:
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
@@ -80,7 +80,6 @@ if __name__ == "__main__":
     
     model = StableDiffusion(
         model_id="runwayml/stable-diffusion-v1-5",
-        use_conditioning=args.condition,
         train_text_encoder=False,
         sample_size=args.size // 8,
     )
