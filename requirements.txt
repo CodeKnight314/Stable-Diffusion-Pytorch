@@ -4,3 +4,4 @@ torchvision
 transformers
 pandas
 accelerate
+bitsandbytes
