@@ -1,92 +1,134 @@
 import torch 
-from transformers import Blip2Processor, Blip2ForConditionalGeneration
+from transformers import Blip2Processor, Blip2ForConditionalGeneration, AutoProcessor, LlavaForConditionalGeneration, AutoModelForCausalLM
 from glob import glob
 import os 
 from PIL import Image
 from tqdm import tqdm
 import csv
 import argparse
-from torch.utils.data import DataLoader, Dataset
-from typing import Tuple
 
-class ImageClass(Dataset):
-    def __init__(self, img_dir: str, patch_size: Tuple[int] = (224, 224)):
-        self.img_dir = img_dir
-        self.img_paths = glob(os.path.join(img_dir, "*.png")) + glob(os.path.join(img_dir, "*.jpg"))
-        self.height, self.width = patch_size
-        
-    def __len__(self):
-        return len(self.img_paths)
-    
-    def __getitem__(self, idx):
-        img_path = self.img_paths[idx]
-        img = Image.open(img_path).convert("RGB")
-        
-        width, height = img.size
-        if width > self.width or height > self.height:
-            ratio = min(self.width/width, self.height/height)
-            new_size = (int(width*ratio), int(height*ratio))
-            img = img.resize(new_size)
-        
-        return img, img_path
+def load_llava(): 
+    processor = AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
+    model = LlavaForConditionalGeneration.from_pretrained(
+        "llava-hf/llava-1.5-7b-hf", 
+        torch_dtype=torch.float16, 
+        low_cpu_mem_usage=True
+    ).to("cuda")
+    processor.image_processor.size = {"height": 336, "width": 336}
+    return processor, model
 
-def custom_collate_fn(batch):
-    images, paths = zip(*batch)
-    return list(images), list(paths)
+def load_blip2():
+    processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
+    model = Blip2ForConditionalGeneration.from_pretrained(
+        "Salesforce/blip2-opt-2.7b", 
+        load_in_8bit=True
+    )
+    return processor, model
+
+def load_cogvlm():
+    processor = AutoProcessor.from_pretrained("THUDM/cogvlm-chat-hf")
+    model = AutoModelForCausalLM.from_pretrained(
+        "THUDM/cogvlm-chat-hf",
+        torch_dtype=torch.float16
+    )
+    return processor, model
     
 class End2End_CaptioningPipeline:
-    def __init__(self, model_id: str = "Salesforce/blip2-opt-2.7b"):
-        self.processor = Blip2Processor.from_pretrained(model_id)
-        self.model = Blip2ForConditionalGeneration.from_pretrained(model_id, load_in_8bit=True)
+    def __init__(self, model_id: str = "llava"):
+        model_loaders = {
+            "llava": load_llava,
+            "blip2": load_blip2,
+            "cogvlm": load_cogvlm
+        }
+        
+        if model_id not in model_loaders:
+            raise ValueError(f"Model {model_id} not supported. Choose from {list(model_loaders.keys())}")
+        
+        self.processor, self.model = model_loaders[model_id]()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model_id = model_id
+        self.model.to(self.device)
         
-    def caption_image(self, inputs: torch.Tensor):
-        with torch.no_grad(): 
-            outputs = self.model.generate(**inputs, 
-                                          max_length=100, 
-                                          num_beams=10, 
-                                          do_sample=True, 
-                                          temperature=0.7, 
-                                          top_p=0.95,
-                                          repetition_penalty=1.5)
-        
-        captions = [self.processor.decode(output, skip_special_tokens=True) for output in outputs]
-        return captions
+    def caption_image(self, image: Image.Image):
+        if self.model_id == "blip2":
+            inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+        elif self.model_id == "llava":
+            conversation = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe this image in detail with short phrases separated by commas."},
+                        {"type": "image"}
+                    ],
+                }
+            ]
+            prompt = self.processor.apply_chat_template(conversation, add_generation_prompt=True)
+            inputs = self.processor(
+                text=prompt, 
+                images=image, 
+                return_tensors="pt"
+            ).to(self.device)
+        elif self.model_id == "cogvlm":
+            query = "<image>\nPlease describe this image in detail."
+            inputs = self.processor(
+                text=query, 
+                images=image, 
+                return_tensors="pt"
+            ).to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=100,
+                num_beams=10,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.95,
+                repetition_penalty=1.5
+            )
+            
+        caption = self.processor.decode(outputs[0], skip_special_tokens=True)
+        return caption
     
-    def process_directory(self, root_dir: str, output_path: str, patch_size: Tuple[int], batch_size: int = 4):
-        img_dir = ImageClass(root_dir, patch_size)  
-        img_loader = DataLoader(img_dir, batch_size=batch_size, collate_fn=custom_collate_fn, shuffle=False)           
+    def process_directory(self, root_dir: str, output_path: str, image_size: tuple):
+        image_paths = glob(os.path.join(root_dir, "*.png")) + glob(os.path.join(root_dir, "*.jpg"))
         
         img2caption_pairs = {}
-        for batch_images, batch_paths in tqdm(img_loader, total=len(img_loader), desc=f"[INFO] Captioning images in {root_dir}: "):
-            inputs = self.processor(images=list(batch_images), return_tensors="pt", padding=True).to(self.device)
-
-            caption = self.caption_image(inputs)
-
-            for path, caption in zip(batch_paths, caption):
-                img2caption_pairs[path] = caption
+        for img_path in tqdm(image_paths, desc=f"[INFO] Captioning images in {root_dir}"):
+            try:
+                image = Image.open(img_path).convert("RGB")
+                image = image.resize(image_size)
+                
+                caption = self.caption_image(image)
+                img2caption_pairs[img_path] = caption
+                    
+            except Exception as e:
+                print(f"Error processing {img_path}: {str(e)}")
+                continue
             
         os.makedirs(output_path, exist_ok=True)
         file_name = os.path.join(output_path, f"captions.csv")
-        with open(file_name, 'w', newline='', encoding="utf-8") as f: 
+        with open(file_name, 'w', newline='', encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["image_path", "caption"])
-            for path, caption in img2caption_pairs.items(): 
+            for path, caption in img2caption_pairs.items():
+                if self.model_id == "llava":
+                    caption = caption[caption.find("ASSISTANT: ") + len("ASSISTANT: "):]
                 writer.writerow([os.path.basename(path), caption])
         
         print(f"[INFO] Captions saved to {output_path}")
-        
         return img2caption_pairs
-            
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=str, help="Root directory containing all images")
     parser.add_argument("--output", type=str, help="Output directory for caption csv")
-    parser.add_argument("--patch_size", type=int, default=(224, 224), help="Size of the image to be resized")
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for captioning")
+    parser.add_argument("--model", type=str, default="llava", choices=["llava", "blip2", "cogvlm"], 
+                        help="Model to use for captioning")
+    parser.add_argument("--image_size", type=int, nargs=2, default=[336, 336], 
+                        help="Size of the image to be resized (height, width)")
     
-    args = parser.parse_args() 
+    args = parser.parse_args()
     
-    pipeline = End2End_CaptioningPipeline()
-    
-    results = pipeline.process_directory(args.root, args.output, args.patch_size, args.batch_size)
+    pipeline = End2End_CaptioningPipeline(args.model)
+    results = pipeline.process_directory(args.root, args.output, tuple(args.image_size))
