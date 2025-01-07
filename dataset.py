@@ -26,7 +26,7 @@ class ImageCaptionDataset(Dataset):
         img = Image.open(path).convert("RGB")
         img_tensor = self.transform(img)
         
-        caption = self.csv[self.csv['image'] == os.path.basename(path)]['caption'].values[0]
+        caption = self.csv[self.csv['image_path'] == os.path.basename(path)]['caption'].values[0]
         return img_tensor, caption
 
 def text_image_collate_fn(batch): 
