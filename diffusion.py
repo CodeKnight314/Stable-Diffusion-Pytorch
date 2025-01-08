@@ -3,6 +3,17 @@ import torch.nn as nn
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
 
+class LoRa(nn.Module):
+    def __init__(self, base_layer: nn.Module, rank: int = 4):
+        super().__init__()
+        self.base_layer = base_layer 
+        self.rank = rank 
+        self.layer_down = nn.Linear(base_layer.in_features, rank, bias=False)
+        self.layer_up = nn.Linear(rank, base_layer.out_features, bias=False)
+        
+    def forward(self, x):
+        return self.base_layer(x) + self.layer_up(self.layer_down(x))
+
 class StableDiffusion: 
     def __init__(self, model_id: str, device: str = "cuda", sample_size: int = 64, train_text_encoder=False):     
         self.vae = AutoencoderKL.from_pretrained(
