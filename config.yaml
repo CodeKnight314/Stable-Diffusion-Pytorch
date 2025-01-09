@@ -1,5 +1,5 @@
 g_step: 1
-s_step: 4000
+s_step: 1000
 batch: 8
 mixed_precision: True
 image_size: 512
@@ -9,6 +9,7 @@ model_params:
   sample_size: 64
   use_conditioning: True 
   train_text_encoder: False
+  lora_finetuning: True
 
 optimizer:
   class: "torch.optim.Adam"
