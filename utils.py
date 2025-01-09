@@ -2,6 +2,7 @@ import os
 import importlib
 from tqdm import tqdm
 import yaml
+from PIL import ImageDraw, ImageFont
 
 class EarlyStopping:
     def __init__(self, patience=10, min_delta=0):
@@ -36,7 +37,7 @@ class EarlyStopping:
             self.best_loss = val_loss
             self.counter = 0
             
-def save_images(images: list, save_pth: str):
+def save_images(images: list, save_pth: str, prompts: list = None):
     """
     Save a list of images to a directory.
     
@@ -46,7 +47,10 @@ def save_images(images: list, save_pth: str):
     """
     os.makedirs(save_pth, exist_ok=True)
     for i, img in enumerate(tqdm(images, total=len(images), desc=f"Saving images to {save_pth}")):
-        img.save(os.path.join(save_pth, f"result_{i}.png"))
+        if prompts is not None: 
+            with open(f"result_{i}.txt", 'w') as f:
+                f.write(prompts[i])
+        img.save(os.path.join(save_pth, f"result_{i}.png"))        
     print("Finished saving images")
 
 def load_config(config_path: str):
