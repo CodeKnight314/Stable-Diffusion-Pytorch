@@ -1,14 +1,15 @@
 g_step: 1
 s_step: 1000
-batch: 8
+batch: 4
 mixed_precision: True
 image_size: 512
+guidance_scale: 7.5
 
 model_params: 
   model_id: "runwayml/stable-diffusion-v1-5"
   sample_size: 64
   use_conditioning: True 
-  train_text_encoder: False
+  train_text_encoder: True
   lora_finetuning: True
 
 optimizer:
