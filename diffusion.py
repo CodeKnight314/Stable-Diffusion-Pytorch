@@ -4,15 +4,40 @@ from diffusers import AutoencoderKL, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
 
 class LoRa(nn.Module):
-    def __init__(self, base_layer: nn.Module, rank: int = 4):
+    def __init__(self, base_layer: nn.Linear, rank: int = 4):
         super().__init__()
         self.base_layer = base_layer 
         self.rank = rank 
-        self.layer_down = nn.Linear(base_layer.in_features, rank, bias=False)
-        self.layer_up = nn.Linear(rank, base_layer.out_features, bias=False)
+
+        self.lora_down = nn.Linear(base_layer.in_features, rank, bias=False)
+        self.lora_up = nn.Linear(rank, base_layer.out_features, bias=False)
         
     def forward(self, x):
-        return self.base_layer(x) + self.layer_up(self.layer_down(x))
+        return self.base_layer(x) + self.lora_up(self.lora_down(x)) * (1.0/self.rank)
+    
+def inject_lora(model: nn.Module, rank: int = 4, device: str = "cuda"):
+    require_grad_params = []
+    lora_layers = {}
+    
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Linear) and any(x in name for x in ['attn']):
+            lora_layer = LoRa(module, rank).to(device)
+            
+            parent_name = '.'.join(name.split('.')[:-1])
+            child_name = name.split('.')[-1]
+            parent_module = model.get_submodule(parent_name)
+            setattr(parent_module, child_name, lora_layer)
+            
+            module.requires_grad_(False)
+            
+            require_grad_params.extend([
+                lora_layer.lora_down.weight,
+                lora_layer.lora_up.weight,
+            ])
+            
+            lora_layers[name] = lora_layer
+    
+    return lora_layers
 
 class StableDiffusion: 
     def __init__(self, model_id: str, device: str = "cuda", sample_size: int = 64, train_text_encoder=False):     
@@ -36,18 +61,29 @@ class StableDiffusion:
             model_id, 
             subfolder="tokenizer"
         )
+        
+        self.lora_layers = inject_lora(self.unet, 4, device)
 
         self.embedding_dim = self.unet.config.cross_attention_dim
         self.device = device 
         self.sample_size = sample_size
     
-    def freeze_parameter(self, train_text_encoder : bool):
+    def freeze_parameter(self, train_text_encoder : bool, lora: bool = True):
         """
         Freeze the parameters of the model
         
         Args:
             train_text_encoder (bool): Flag to freeze or unfreeze the text encoder
         """ 
+        
+        if lora:
+            for layer in self.lora_layers.values():
+                layer.lora_down.weight.requires_grad = True
+                layer.lora_up.weight.requires_grad = True
+        else:
+            for params in self.unet.parameters():
+                params.requires_grad = False
+            
         for params in self.vae.parameters(): 
             params.requires_grad = False 
             
@@ -97,6 +133,22 @@ class StableDiffusion:
         if self.text_encoder.parameters():
             params.extend(self.text_encoder.parameters())
         return params
+    
+    def get_trainable_lora_params(self):
+        if not self.lora_layers:
+            return []
+        
+        params = []
+        for layer in self.lora_layers.values():
+            params.extend([
+                layer.lora_down.weight,
+                layer.lora_up.weight
+            ])
+            
+        if self.text_encoder.parameters(): 
+            params.extend(self.text_encoder.parameters())
+            
+        return params
 
     def save_pretrained(self, save_path):
         self.unet.save_pretrained(f"{save_path}/unet")
@@ -108,7 +160,8 @@ class StableDiffusion:
     def load_from_pretrained(self, save_path: str, device: str = "cuda", sample_size: int = 64):
         try:
             self.unet = UNet2DConditionModel.from_pretrained(
-                f"{save_path}/unet"
+                f"{save_path}/unet",
+                sample_size=sample_size
             ).to(device)
         except Exception as e: 
             print("[ERROR] Loading unet weights encountered error. See below for details: ")
@@ -147,13 +200,14 @@ def load_diffusion(config):
         train_text_encoder=config["train_text_encoder"]
     )
     
-    model.freeze_parameter(config["train_text_encoder"])
+    model.freeze_parameter(config["train_text_encoder"], config["lora_finetuning"])
     
     print(f"----------------------------------------")
     print(f"Loading StableDiffusion model with the following parameters:")
     print(f"Model ID:           {config['model_id']}")
     print(f"Sample Size:        {config['sample_size']}")
     print(f"Train Text Encoder: {config['train_text_encoder']}")
+    print(f"Lora Finetuning:    {config['lora_finetuning']}")
     print(f"----------------------------------------")
     return model
 
