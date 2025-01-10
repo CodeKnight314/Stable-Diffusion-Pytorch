@@ -19,7 +19,7 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
         config (dict): The configuration dictionary.
         save_path (str): The path to save the model checkpoints.
     """
-    optimizer = load_optimizer(config["optimizer"], model.get_trainable_params())
+    optimizer = load_optimizer(config["optimizer"], model.get_trainable_lora_params())
     noise_scheduler = load_module(config["noise_scheduler"])
     scaler = torch.cuda.amp.GradScaler() if config["mixed_precision"] else None
     early_stopping = EarlyStopping(patience=5)
@@ -38,11 +38,14 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                 model.text_encoder.train()
 
             epoch_loss = 0.0
+            epoch_cosine_loss = 0.0
             for step, data in tqdm(enumerate(train_dl), total=len(train_dl),
-                                   desc=f"[Epoch {epoch}] Fine-tuning Conditional StableDiffusion"):
+                                   desc=f"[Epoch {epoch+1}] Fine-tuning Conditional StableDiffusion"):
                 img, prompt = data
+                uncond_embeddings = model.prepare_text_embeddings([""] * img.shape[0]).to(device)
                 text_embeddings = model.prepare_text_embeddings(prompt).to(device)
-
+                text_embeddings = torch.cat([uncond_embeddings, text_embeddings], dim=0)
+                
                 img = img.to(device)
                 latents = model.encode_images(img)
 
@@ -52,10 +55,13 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                 )
 
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
+                noisy_latents = torch.concat([noisy_latents] * 2, dim=0)
+                timesteps = torch.concat([timesteps] * 2, dim=0)
                 if config["mixed_precision"]:
                     with torch.cuda.amp.autocast():
                         noisy_pred = model.predict_noise(noisy_latents, timesteps, text_embeddings)
+                        noise_pred_uncond, noise_pred_text = noisy_pred.chunk(2, dim=0)
+                        noisy_pred = noise_pred_uncond + config["guidance_scale"] * (noise_pred_text - noise_pred_uncond)                
                         loss = torch.nn.functional.mse_loss(noisy_pred, noise) / config["g_step"]
 
                     scaler.scale(loss).backward()
@@ -66,6 +72,8 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                         optimizer.zero_grad()
                 else:
                     noisy_pred = model.predict_noise(noisy_latents, timesteps, text_embeddings)
+                    noise_pred_uncond, noise_pred_text = noisy_pred.chunk(2, dim=0)
+                    noisy_pred = noise_pred_uncond + config["guidance_scale"] * (noise_pred_text - noise_pred_uncond)
                     loss = torch.nn.functional.mse_loss(noisy_pred, noise) / config["g_step"]
 
                     loss.backward()
@@ -75,6 +83,7 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                         optimizer.zero_grad()
 
                 epoch_loss += loss.item()
+                epoch_cosine_loss += torch.nn.functional.cosine_similarity(noisy_pred, noise).mean().item()
                 global_step += 1
 
                 if global_step % config["s_step"] == 0:
@@ -104,6 +113,7 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                         return
 
             print(f"Epoch {epoch + 1} average loss: {epoch_loss / len(train_dl):.4f}")
+            print(f"Epoch {epoch + 1} average cosine similarity: {epoch_cosine_loss / len(train_dl):.4f}")
 
     except KeyboardInterrupt:
         checkpoint_path = os.path.join(save_path, "Interrupted_checkpoint")
