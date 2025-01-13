@@ -2,6 +2,13 @@ import torch
 import torch.nn as nn
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
+from utils import load_config
+from torchsummary import summary
+
+### TO DO
+### Open up Cross Attention Layers for training 
+### Inject LoRA layers into the model appropriately -> check UNet2DConditionModel struct
+### Test new configuration with the model
 
 class LoRa(nn.Module):
     def __init__(self, base_layer: nn.Linear, rank: int = 4):
@@ -40,7 +47,7 @@ def inject_lora(model: nn.Module, rank: int = 4, device: str = "cuda"):
     return lora_layers
 
 class StableDiffusion: 
-    def __init__(self, model_id: str, device: str = "cuda", sample_size: int = 64, train_text_encoder=False):     
+    def __init__(self, model_id: str, device: str = "cuda", sample_size: int = 64, rank: int = 4):     
         self.vae = AutoencoderKL.from_pretrained(
             model_id, 
             subfolder="vae"
@@ -62,7 +69,7 @@ class StableDiffusion:
             subfolder="tokenizer"
         )
         
-        self.lora_layers = inject_lora(self.unet, 4, device)
+        self.lora_layers = inject_lora(self.unet, rank, device)
 
         self.embedding_dim = self.unet.config.cross_attention_dim
         self.device = device 
@@ -74,22 +81,41 @@ class StableDiffusion:
         
         Args:
             train_text_encoder (bool): Flag to freeze or unfreeze the text encoder
+            lora (bool): Flag to freeze or unfreeze the LoRA layers
         """ 
         
-        if lora:
-            for layer in self.lora_layers.values():
-                layer.lora_down.weight.requires_grad = True
-                layer.lora_up.weight.requires_grad = True
-        else:
-            for params in self.unet.parameters():
-                params.requires_grad = False
+        for params in self.unet.parameters():
+            params.requires_grad = False
             
         for params in self.vae.parameters(): 
             params.requires_grad = False 
             
         if not train_text_encoder:
             for param in self.text_encoder.parameters():
-                param.requires_grad = False 
+                param.requires_grad = False
+        
+        if lora:
+            for layer in self.lora_layers.values():
+                layer.lora_down.weight.requires_grad = True
+                layer.lora_up.weight.requires_grad = True
+    
+    def count_parameters(self):
+        """
+        Count total and trainable parameters in the model
+        
+        Returns:
+            tuple: (total_params, trainable_params)
+        """
+        total_params = 0
+        trainable_params = 0
+        
+        for model in [self.unet, self.vae, self.text_encoder]:
+            for param in model.parameters():
+                total_params += param.numel()
+                if param.requires_grad:
+                    trainable_params += param.numel()
+                    
+        return total_params, trainable_params
                 
     def prepare_text_embeddings(self, prompt : str):
         """
@@ -197,10 +223,11 @@ def load_diffusion(config):
     model = StableDiffusion(
         model_id=config["model_id"],
         sample_size=config["sample_size"],
-        train_text_encoder=config["train_text_encoder"]
+        rank=config["rank"]
     )
     
     model.freeze_parameter(config["train_text_encoder"], config["lora_finetuning"])
+    total_params, trainable_params = model.count_parameters()
     
     print(f"----------------------------------------")
     print(f"Loading StableDiffusion model with the following parameters:")
@@ -208,12 +235,14 @@ def load_diffusion(config):
     print(f"Sample Size:        {config['sample_size']}")
     print(f"Train Text Encoder: {config['train_text_encoder']}")
     print(f"Lora Finetuning:    {config['lora_finetuning']}")
+    print(f"Total parameters: {total_params:,}")
+    print(f"Trainable parameters: {trainable_params:,}")
+    print(f"Percentage trainable: {(trainable_params/total_params)*100:.2f}%\n")
     print(f"----------------------------------------")
     return model
 
 if __name__ == "__main__": 
-    model = StableDiffusion(
-      model_id="CompVis/stable-diffusion-v1-4",
-      train_text_encoder=True,
-      sample_size=64
-    )
+    config = load_config("config.yaml")
+    model = load_diffusion(config["model_params"])
+    unet = model.unet
+    summary(unet, input_size=(4, model.sample_size, model.sample_size))
