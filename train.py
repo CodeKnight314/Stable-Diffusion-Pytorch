@@ -101,7 +101,7 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                                 model,
                                 prompt=prompt,
                                 scheduler=noise_scheduler,
-                                guidance_scale=7.5,
+                                guidance_scale=config["guidance_scale"],
                             )
                         )
 
@@ -135,6 +135,6 @@ if __name__ == "__main__":
     config = load_config(args.config)
 
     model = load_diffusion(config["model_params"])
-    train_dl = load_dataset(args.root, args.csv, config["image_size"], config["batch"])
+    train_dl = load_dataset(args.root, args.csv, (config["image_size"], config["image_size"]), config["batch"])
 
     train(model, train_dl, config, args.save, args.epoch)
