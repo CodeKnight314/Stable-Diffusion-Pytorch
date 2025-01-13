@@ -5,3 +5,10 @@ transformers
 pandas
 accelerate
 bitsandbytes
+sentencepiece 
+einops
+xformers 
+triton
+protobuf
+flash-attn
+torchsummary
