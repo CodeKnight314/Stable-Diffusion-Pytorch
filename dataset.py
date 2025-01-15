@@ -16,7 +16,11 @@ class ImageCaptionDataset(Dataset):
         self.csv = pd.read_csv(csv_path)
         self.dir = glob(os.path.join(root_dir, "*.jpg")) + glob(os.path.join(root_dir, "*.png"))
         
-        self.transform = T.Compose([T.Resize(size), T.ToTensor()])
+        self.transform = T.Compose([T.RandomVerticalFlip(0.25),
+                                    T.RandomHorizontalFlip(0.25),
+                                    T.Resize(size), 
+                                    T.ToTensor(), 
+                                    T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
     
     def __len__(self): 
         return len(self.dir)
