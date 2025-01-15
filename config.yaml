@@ -6,10 +6,10 @@ image_size: 512
 guidance_scale: 9
 
 model_params: 
-  model_id: "runwayml/stable-diffusion-v1-5"
+  model_id: "stable-diffusion-v1-5/stable-diffusion-v1-5"
   sample_size: 64
   use_conditioning: True 
-  train_text_encoder: False
+  train_text_encoder: True
   lora_finetuning: True
   rank: 4
 
@@ -24,7 +24,7 @@ optimizer:
 noise_scheduler: 
   class: "diffusers.schedulers.DDIMScheduler"
   params:
-    beta_schedule: "linear"
+    beta_schedule: "scaled_linear"
     beta_start: 0.00085
     beta_end: 0.012
     num_train_timesteps: 1000
