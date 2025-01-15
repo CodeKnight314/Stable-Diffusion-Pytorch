@@ -4,20 +4,25 @@ from diffusers import AutoencoderKL, UNet2DConditionModel
 from transformers import CLIPTextModel, CLIPTokenizer
 from utils import load_config
 from torchsummary import summary
-
-### TO DO
-### Open up Cross Attention Layers for training 
-### Inject LoRA layers into the model appropriately -> check UNet2DConditionModel struct
-### Test new configuration with the model
+import math
 
 class LoRa(nn.Module):
-    def __init__(self, base_layer: nn.Linear, rank: int = 4):
+    def __init__(self, base_layer: nn.Module, rank: int = 4):
         super().__init__()
         self.base_layer = base_layer 
         self.rank = rank 
-
-        self.lora_down = nn.Linear(base_layer.in_features, rank, bias=False)
-        self.lora_up = nn.Linear(rank, base_layer.out_features, bias=False)
+        
+        if isinstance(base_layer, nn.Linear):
+            self.lora_down = nn.Linear(base_layer.in_features, rank, bias=False)
+            self.lora_up = nn.Linear(rank, base_layer.out_features, bias=False)
+        elif isinstance(base_layer, nn.Conv2d):
+            self.lora_down = nn.Conv2d(base_layer.in_channels, rank, kernel_size=1, stride=1, padding=0, bias=False)
+            self.lora_up = nn.Conv2d(rank, base_layer.out_channels, kernel_size=1, stride=1, padding=0, bias=False)
+        else:
+            raise ValueError(f"[ERROR] LoRA Layer only supports nn.Linear and nn.Conv2d layers but received {type(base_layer)}.")
+            
+        nn.init.kaiming_uniform_(self.lora_down.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_up.weight)
         
     def forward(self, x):
         return self.base_layer(x) + self.lora_up(self.lora_down(x)) * (1.0/self.rank)
@@ -27,22 +32,22 @@ def inject_lora(model: nn.Module, rank: int = 4, device: str = "cuda"):
     lora_layers = {}
     
     for name, module in model.named_modules():
-        if isinstance(module, nn.Linear) and any(x in name for x in ['attn']):
-            lora_layer = LoRa(module, rank).to(device)
+        if any(x in name for x in ['attn']):
+            if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d):
+                lora_layer = LoRa(module, rank).to(device)
+                parent_name = ".".join(name.split(".")[:-1])
+                child_name = name.split(".")[-1]
+                parent_module = model.get_submodule(parent_name)
+                setattr(parent_module, child_name, lora_layer)
             
-            parent_name = '.'.join(name.split('.')[:-1])
-            child_name = name.split('.')[-1]
-            parent_module = model.get_submodule(parent_name)
-            setattr(parent_module, child_name, lora_layer)
+                module.requires_grad_(False)
+                
+                require_grad_params.extend([
+                    lora_layer.lora_down.weight,
+                    lora_layer.lora_up.weight,
+                ])
             
-            module.requires_grad_(False)
-            
-            require_grad_params.extend([
-                lora_layer.lora_down.weight,
-                lora_layer.lora_up.weight,
-            ])
-            
-            lora_layers[name] = lora_layer
+                lora_layers[name] = lora_layer
     
     return lora_layers
 
@@ -98,6 +103,9 @@ class StableDiffusion:
             for layer in self.lora_layers.values():
                 layer.lora_down.weight.requires_grad = True
                 layer.lora_up.weight.requires_grad = True
+        else: 
+            for params in self.unet.parameters():
+                params.requires_grad = True
     
     def count_parameters(self):
         """
