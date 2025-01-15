@@ -19,7 +19,10 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
         config (dict): The configuration dictionary.
         save_path (str): The path to save the model checkpoints.
     """
-    optimizer = load_optimizer(config["optimizer"], model.get_trainable_lora_params())
+    best_mse_loss = float("inf")
+    best_cosine_loss = float("-inf")
+    
+    optimizer = load_optimizer(config["optimizer"], model.get_trainable_lora_params() if config["model_params"]["lora_finetuning"] else model.get_trainable_params())
     noise_scheduler = load_module(config["noise_scheduler"])
     scaler = torch.cuda.amp.GradScaler() if config["mixed_precision"] else None
     early_stopping = EarlyStopping(patience=5)
@@ -87,9 +90,7 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                 global_step += 1
 
                 if global_step % config["s_step"] == 0:
-                    checkpoint_path = os.path.join(save_path, f"checkpoint-{global_step}")
-                    model.save_pretrained(checkpoint_path)
-
+                    model.unet.eval()
                     noise_scheduler.set_timesteps(100)
                     data = next(iter(train_dl))
                     pil_images = []
@@ -105,7 +106,7 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                             )
                         )
 
-                    save_images(pil_images, os.path.join(save_path, f"checkpoint-{global_step}-samples/"))
+                    save_images(pil_images, os.path.join(save_path, f"checkpoint-{global_step}-samples/"), list(text))
 
                     early_stopping(epoch_loss)
                     if early_stopping.early_stop:
@@ -114,6 +115,12 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
 
             print(f"Epoch {epoch + 1} average loss: {epoch_loss / len(train_dl):.4f}")
             print(f"Epoch {epoch + 1} average cosine similarity: {epoch_cosine_loss / len(train_dl):.4f}")
+            if epoch_loss / len(train_dl) < best_mse_loss or epoch_cosine_loss / len(train_dl) > best_cosine_loss:
+                checkpoint_path = os.path.join(save_path, f"checkpoint-{global_step}")
+                model.save_pretrained(checkpoint_path)
+                best_mse_loss = min(best_mse_loss, epoch_loss / len(train_dl))
+                best_cosine_loss = max(best_cosine_loss, epoch_cosine_loss / len(train_dl))
+                print(f"[INFO] New model weights checkpointed at {checkpoint_path}")
 
     except KeyboardInterrupt:
         checkpoint_path = os.path.join(save_path, "Interrupted_checkpoint")
