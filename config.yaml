@@ -1,9 +1,10 @@
 g_step: 1
-s_step: 1000
+s_step: 500
 batch: 4
 mixed_precision: True
 image_size: 512
-guidance_scale: 7.5
+guidance_scale: 9
+save_limit: 4
 
 model_params: 
   model_id: "stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -29,4 +30,4 @@ noise_scheduler:
     beta_end: 0.012
     beta_schedule: "scaled_linear"
     num_train_timesteps: 1000
-    skip_prk_steps: True
+    skip_prk_steps: False
