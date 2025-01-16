@@ -16,11 +16,14 @@ class ImageCaptionDataset(Dataset):
         self.csv = pd.read_csv(csv_path)
         self.dir = glob(os.path.join(root_dir, "*.jpg")) + glob(os.path.join(root_dir, "*.png"))
         
+        valid_images = set(self.csv["image_path"].values)
+        self.dir = [img for img in self.dir if os.path.basename(img) in valid_images]
         self.transform = T.Compose([T.RandomVerticalFlip(0.25),
                                     T.RandomHorizontalFlip(0.25),
                                     T.Resize(size), 
                                     T.ToTensor(), 
                                     T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
+        assert len(self.dir) == len(self.csv), "Number of images and captions do not match"
     
     def __len__(self): 
         return len(self.dir)
@@ -29,7 +32,6 @@ class ImageCaptionDataset(Dataset):
         path = self.dir[index]
         img = Image.open(path).convert("RGB")
         img_tensor = self.transform(img)
-        
         caption = self.csv[self.csv['image_path'] == os.path.basename(path)]['caption'].values[0]
         return img_tensor, caption
 
