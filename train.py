@@ -117,14 +117,14 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
             print(f"Epoch {epoch + 1} average cosine similarity: {epoch_cosine_loss / len(train_dl):.4f}")
             if epoch_loss / len(train_dl) < best_mse_loss or epoch_cosine_loss / len(train_dl) > best_cosine_loss:
                 checkpoint_path = os.path.join(save_path, f"checkpoint-{global_step}")
-                model.save_pretrained(checkpoint_path)
+                model.save_model(checkpoint_path)
                 best_mse_loss = min(best_mse_loss, epoch_loss / len(train_dl))
                 best_cosine_loss = max(best_cosine_loss, epoch_cosine_loss / len(train_dl))
                 print(f"[INFO] New model weights checkpointed at {checkpoint_path}")
 
     except KeyboardInterrupt:
         checkpoint_path = os.path.join(save_path, "Interrupted_checkpoint")
-        model.save_pretrained(checkpoint_path)
+        model.save_model(checkpoint_path)
         print("[INFO] Saved model after interrupted fine-tuning")
     finally:
         torch.cuda.empty_cache()
