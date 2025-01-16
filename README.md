@@ -7,12 +7,13 @@ The curren repository is available to fine-tune on conditional or unconditional 
 
 ## Visual Results
 <div style="display: flex; justify-content: space-around;">
-    <img src="resources/result_0.png" alt="Stable-Diffusion Image 0" style="width: 33%;">
-    <img src="resources/result_1.png" alt="Stable-Diffusion Image 1" style="width: 33%;">
-    <img src="resources/result_2.png" alt="Stable-Diffusion Image 2" style="width: 33%;">
+    <img src="resources/result_0.png" alt="Stable-Diffusion Image 0" style="width: 30%;">
+    <img src="resources/result_1.png" alt="Stable-Diffusion Image 1" style="width: 30%;">
+    <img src="resources/result_2.png" alt="Stable-Diffusion Image 2" style="width: 30%;">
 </div>
 
 <div style="display: flex; justify-content: space-around;">
-    <img src="resources/result_3.png" alt="Stable-Diffusion Image 3" style="width: 33%;">
-    <img src="resources/result_4.png" alt="Stable-Diffusion Image 4" style="width: 33%;">
+    <img src="resources/result_3.png" alt="Stable-Diffusion Image 3" style="width: 30%;">
+    <img src="resources/result_4.png" alt="Stable-Diffusion Image 4" style="width: 30%;">
+    <img src="resources/result_5.png" alt="Stable-Diffusion Image 5" style="width: 30%;">
 </div>
