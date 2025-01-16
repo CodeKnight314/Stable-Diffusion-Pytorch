@@ -91,7 +91,7 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
 
                 if global_step % config["s_step"] == 0:
                     model.unet.eval()
-                    noise_scheduler.set_timesteps(100)
+                    noise_scheduler.set_timesteps(config["noise_scheduler"]["num_steps"])
                     data = next(iter(train_dl))
                     pil_images = []
     
@@ -121,6 +121,11 @@ def train(model: StableDiffusion, train_dl: DataLoader, config: dict, save_path:
                 best_mse_loss = min(best_mse_loss, epoch_loss / len(train_dl))
                 best_cosine_loss = max(best_cosine_loss, epoch_cosine_loss / len(train_dl))
                 print(f"[INFO] New model weights checkpointed at {checkpoint_path}")
+                
+                if len(os.listdir(save_path)) > config["save_limit"]:
+                    checkpoints = sorted(os.listdir(save_path))
+                    os.remove(os.path.join(save_path, checkpoints[0]))
+                    print(f"[INFO] Removed checkpoint {checkpoints[0]} to maintain save limit of {config['save_limit']} checkpoints")
 
     except KeyboardInterrupt:
         checkpoint_path = os.path.join(save_path, "Interrupted_checkpoint")
