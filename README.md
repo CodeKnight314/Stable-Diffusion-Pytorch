@@ -6,14 +6,14 @@ This is an educational repository on fine-tuning publicly available Stale-Diffus
 The curren repository is available to fine-tune on conditional or unconditional fine-tuning. For future developments, this repository will aim to expand the fine-tuning framework to Image-to-Image translation, Image inpainting, and other areas within reason. Results are, or will be, shown below along with instructions on usage and deploymnet.
 
 ## Visual Results
-<div style="display: flex; justify-content: space-around;">
-    <img src="resources/result_0.png" alt="Stable-Diffusion Image 0" style="width: 30%;">
-    <img src="resources/result_1.png" alt="Stable-Diffusion Image 1" style="width: 30%;">
-    <img src="resources/result_2.png" alt="Stable-Diffusion Image 2" style="width: 30%;">
+<div style="display: flex; justify-content: center; flex-wrap: wrap;">
+    <img src="resources/result_0.png" alt="Stable-Diffusion Image 0" style="width: 30%; margin: 10px;">
+    <img src="resources/result_1.png" alt="Stable-Diffusion Image 1" style="width: 30%; margin: 10px;">
+    <img src="resources/result_2.png" alt="Stable-Diffusion Image 2" style="width: 30%; margin: 10px;">
 </div>
 
-<div style="display: flex; justify-content: space-around;">
-    <img src="resources/result_3.png" alt="Stable-Diffusion Image 3" style="width: 30%;">
-    <img src="resources/result_4.png" alt="Stable-Diffusion Image 4" style="width: 30%;">
-    <img src="resources/result_5.png" alt="Stable-Diffusion Image 5" style="width: 30%;">
+<div style="display: flex; justify-content: center; flex-wrap: wrap;">
+    <img src="resources/result_3.png" alt="Stable-Diffusion Image 3" style="width: 30%; margin: 10px;">
+    <img src="resources/result_4.png" alt="Stable-Diffusion Image 4" style="width: 30%; margin: 10px;">
+    <img src="resources/result_5.png" alt="Stable-Diffusion Image 5" style="width: 30%; margin: 10px;">
 </div>
