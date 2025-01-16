@@ -1,12 +1,11 @@
 import torch
-from diffusers import DDPMScheduler, DDIMScheduler, PNDMScheduler
 from PIL import Image
 import argparse
-from diffusion import StableDiffusion
+from diffusion import load_diffusion, StableDiffusion
 from tqdm import tqdm
-from utils import save_images
+from utils import save_images, load_module, load_config
 
-def inference(model: StableDiffusion, prompt: str, scheduler: DDIMScheduler, guidance_scale: float = 7.5):
+def inference(model: StableDiffusion, prompt: str, scheduler: torch.nn.Module, guidance_scale: float = 7.5):
     """
     Function to generate images using the Stable Diffusion Model with the given prompt and scheduler. 
     Optionally, guidance scale can be set to control the influence of the prompt on the generated image.
@@ -68,34 +67,21 @@ def inference(model: StableDiffusion, prompt: str, scheduler: DDIMScheduler, gui
         
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weight", type=str, required=False, help="Path to Stable Diffusion Weights")
-    parser.add_argument("--condition", action="store_true", help="Toggle option for turning on/off text prompting")
-    parser.add_argument("--size", type=int, default=512, help="Image size for Stable Diffusion Output")
+    parser.add_argument("--weight", type=str, required=False, help="Directory containing SD_full.pth")
+    parser.add_argument("--config", type=str, required=True, help="Directory containing config.yaml")
     parser.add_argument("--prompt", type=str, default=None, help="Conditional Prompt for the Stable Diffusion Model")
-    parser.add_argument("--steps", type=int, default=100, help="Number of diffusion steps")
     parser.add_argument("--num_images", type=int, default=1, help="Number of images to generate")
-    parser.add_argument("--output", type=str, default="output", help="Directory to save generated images")
+    parser.add_argument("--save", type=str, default="output", help="Directory to save generated images")
     
     args = parser.parse_args()
     
-    model = StableDiffusion(
-        model_id="runwayml/stable-diffusion-v1-5",
-        train_text_encoder=False,
-        sample_size=args.size // 8,
-    )
+    config = load_config(args.config)
+    model = load_diffusion(config["model_params"])
     
+    scheduler = load_module(config["noise_scheduler"])
+    scheduler.set_timesteps(config["noise_scheduler"]["num_steps"])
     if args.weight is not None:
-        model.load_from_pretrained(args.weight)
-    
-    scheduler = PNDMScheduler(
-        beta_start=0.00085,
-        beta_end=0.012,
-        beta_schedule="scaled_linear",
-        num_train_timesteps=1000,
-        skip_prk_steps=True
-    )
-    
-    scheduler.set_timesteps(args.steps)
+        model.load_model(args.weight)
     
     images = []
     for i in range(args.num_images):
