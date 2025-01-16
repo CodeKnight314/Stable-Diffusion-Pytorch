@@ -5,6 +5,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from utils import load_config
 from torchsummary import summary
 import math
+import os
 
 class LoRa(nn.Module):
     def __init__(self, base_layer: nn.Module, rank: int = 4):
@@ -52,7 +53,7 @@ def inject_lora(model: nn.Module, rank: int = 4, device: str = "cuda"):
     return lora_layers
 
 class StableDiffusion: 
-    def __init__(self, model_id: str, device: str = "cuda", sample_size: int = 64, rank: int = 4):     
+    def __init__(self, model_id: str, device: str = "cuda", sample_size: int = 64, rank: int = 4, lora_finetuning: bool = False):     
         self.vae = AutoencoderKL.from_pretrained(
             model_id, 
             subfolder="vae"
@@ -79,6 +80,7 @@ class StableDiffusion:
         self.embedding_dim = self.unet.config.cross_attention_dim
         self.device = device 
         self.sample_size = sample_size
+        self.lora_training = lora_finetuning
     
     def freeze_parameter(self, train_text_encoder : bool, lora: bool = True):
         """
@@ -183,70 +185,98 @@ class StableDiffusion:
             params.extend(self.text_encoder.parameters())
             
         return params
-
-    def save_pretrained(self, save_path):
-        self.unet.save_pretrained(f"{save_path}/unet")
-        self.vae.save_pretrained(f"{save_path}/vae")
-        if self.tokenizer and self.text_encoder:
-            self.text_encoder.save_pretrained(f"{save_path}/text_encoder")
-            self.tokenizer.save_pretrained(f"{save_path}/tokenizer")
     
-    def load_from_pretrained(self, save_path: str, device: str = "cuda", sample_size: int = 64):
-        try:
-            self.unet = UNet2DConditionModel.from_pretrained(
-                f"{save_path}/unet",
-                sample_size=sample_size
-            ).to(device)
-        except Exception as e: 
-            print("[ERROR] Loading unet weights encountered error. See below for details: ")
-            print(e)
-        
-        try:
-            self.vae = AutoencoderKL.from_pretrained(
-                f"{save_path}/vae"
-            ).to(device)
-        except Exception as e: 
-            print("[ERROR] Loading vae weights encountered error. See below for details: ")
-            print(e)
-        
-        try:
-            self.text_encoder = CLIPTextModel.from_pretrained(
-                f"{save_path}/text_encoder"
-            ).to(device)
-        except Exception as e: 
-            print("[ERROR] Loading text encoder weights encountered error. See below for details: ")
-            print(e)
-        
-        try:
-            self.tokenizer = CLIPTokenizer.from_pretrained(
-                f"{save_path}/tokenizer"
-            )
-        except Exception as e: 
-            print("[ERROR] Loading tokenizer weights encountered error. See below for details: ")
-            print(e)
-        
-        print(f"[INFO] Loaded weights from {save_path} successfully.")
+    def save_model(self, save_path: str):
+        os.makedirs(save_path)
+        if self.lora_training: 
+            lora_state_dict = {}
+            for name, layer in self.lora_layers.items():
+                lora_state_dict[f"{name}.lora_down.weight"] = layer.lora_down.weight
+                lora_state_dict[f"{name}.lora_up.weight"] = layer.lora_up.weight
+            
+            torch.save(lora_state_dict, os.path.join(save_path, "lora.pth"))
+            print(f"Saved LoRA weights to {os.path.join(save_path, 'lora.pth')}")
+            
+            if any(param.requires_grad for param in self.text_encoder.parameters()):
+                torch.save(
+                    self.text_encoder.state_dict(),
+                    os.path.join(save_path, "text_encoder.pth")
+                )
+                print(f"Saved text encoder weights to {os.path.join(save_path, 'text_encoder.pth')}")
+        else: 
+            full_state_dict = {
+                "unet": self.unet.state_dict(),
+                "text_encoder": self.text_encoder.state_dict(),
+                "vae": self.vae.state_dict()
+            }
+            
+            torch.save(full_state_dict, os.path.join(save_path, "SD_full.pth"))
+            print(f"Saved full model weights to {os.path.join(save_path, 'SD_full.pth')}")
+            
+    def load_model(self, save_path: str):
+        if not os.path.exists(save_path):
+            raise FileNotFoundError(f"Weights file not found at {save_path}")
+            
+        if os.path.exists(os.path.join(save_path, "lora.pth")):
+            lora_state_dict = torch.load(save_path, map_location=self.device)
+            
+            try: 
+                for name, layer in self.lora_layers.items():
+                    if f"{name}.lora_down.weight" in lora_state_dict:
+                        layer.lora_down.weight.data = lora_state_dict[f"{name}.lora_down.weight"].to(self.device)
+                        layer.lora_up.weight.data = lora_state_dict[f"{name}.lora_up.weight"].to(self.device)
+                print("[INFO] Loaded LoRA weights")
+            except Exception as e: 
+                print(f"[ERROR] Error loading LoRA weights. Encountered {e}")
+            
+            try:
+                if(os.path.join("text_encoder.pth")):
+                    self.text_encoder.load_state_dict(torch.load(os.path.join(save_path, "text_encoder.pth"), map_location=self.device))
+            except Exception as e: 
+                print("[ERROR] Error loading text encoder weights. Encountered {e}")
+            
+        else:
+            full_state_dict = torch.load(os.path.join(save_path, "SD_full.pth"), map_location=self.device)
+            try:
+                self.unet.load_state_dict(full_state_dict["unet"])
+                print("[INFO] Loaded UNet weights successfully")
+            except Exception as e:
+                print(f"[ERROR] Error loading UNet weights. Encountered {e}")
+            
+            try:  
+                self.vae.load_state_dict(full_state_dict["vae"])
+                print("[INFO] Loaded VAE weights successfully")
+            except Exception as e:
+                print(f"[ERROR] Error loading VAE weights. Encountered {e}")
+            
+            if self.text_encoder and "text_encoder" in full_state_dict:
+                try:
+                    self.text_encoder.load_state_dict(full_state_dict["text_encoder"])
+                    print("[INFO] Loaded text encoder weights successfully")
+                except Exception as e:
+                    print(f"[ERROR] Error loading text encoder weights. Encountered {e}")
       
-def load_diffusion(config):
+def load_diffusion(config, display: bool = True):
     model = StableDiffusion(
         model_id=config["model_id"],
         sample_size=config["sample_size"],
-        rank=config["rank"]
+        rank=config["rank"], 
+        lora_finetuning=config["lora_finetuning"]
     )
     
     model.freeze_parameter(config["train_text_encoder"], config["lora_finetuning"])
     total_params, trainable_params = model.count_parameters()
-    
-    print(f"----------------------------------------")
-    print(f"Loading StableDiffusion model with the following parameters:")
-    print(f"Model ID:           {config['model_id']}")
-    print(f"Sample Size:        {config['sample_size']}")
-    print(f"Train Text Encoder: {config['train_text_encoder']}")
-    print(f"Lora Finetuning:    {config['lora_finetuning']}")
-    print(f"Total parameters: {total_params:,}")
-    print(f"Trainable parameters: {trainable_params:,}")
-    print(f"Percentage trainable: {(trainable_params/total_params)*100:.2f}%\n")
-    print(f"----------------------------------------")
+    if display:
+        print(f"----------------------------------------")
+        print(f"Loading StableDiffusion model with the following parameters:")
+        print(f"Model ID:           {config['model_id']}")
+        print(f"Sample Size:        {config['sample_size']}")
+        print(f"Train Text Encoder: {config['train_text_encoder']}")
+        print(f"Lora Finetuning:    {config['lora_finetuning']}")
+        print(f"Total parameters: {total_params:,}")
+        print(f"Trainable parameters: {trainable_params:,}")
+        print(f"Percentage trainable: {(trainable_params/total_params)*100:.2f}%\n")
+        print(f"----------------------------------------")
     return model
 
 if __name__ == "__main__": 
