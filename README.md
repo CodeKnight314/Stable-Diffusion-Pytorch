@@ -18,3 +18,35 @@ The curren repository is available to fine-tune on conditional or unconditional 
         <img src="resources/result_5.png" alt="Stable-Diffusion Image 5" style="width: 30%; margin: 10px;">
     </div>
 </div>
+
+## Planned Features
+- **Image-to-Image Translation**
+  - Enable the model to generate variations of a given input image by fine-tuning it for image-to-image translation tasks.
+- **Image Inpainting**
+  - Extend the framework to support inpainting tasks, allowing users to repair or complete partially damaged or missing sections of images.
+- **Textual Inversion Integration**
+  - Integrate support for textual inversion, enabling users to fine-tune the model to learn and generate specific styles or concepts based on new text prompts.
+- **Multi-GPU Training**
+  - Add support for distributed data parallel (DDP) to leverage multiple GPUs efficiently. 
+- **Better Dataset for Cyberpunk Style finetuning**
+  - Add supporting utils and scrapping functions to create quality datasets from unlabeled data.
+
+## Usage
+Training Script: train.py
+
+To fine-tune the model using the train.py script, the following command-line arguments are required:
+```--root``` (type: str, required): Specifies the root directory containing the dataset for fine-tuning.
+```--csv``` (type: str, required): Path to the CSV file containing image captions paired with their respective images.
+```--epoch``` (type: int, optional, default: 10): Number of epochs to run for fine-tuning.
+```--sav```e (type: str, required): Path where the model checkpoints will be saved.
+```--config``` (type: str, required): Path to the configuration file specifying model and training parameters.
+
+Example Usage:
+```bash
+python train.py \
+    --root /path/to/dataset \
+    --csv /path/to/captions.csv \
+    --epoch 20 \
+    --save /path/to/save/checkpoints \
+    --config /path/to/config.json
+```
