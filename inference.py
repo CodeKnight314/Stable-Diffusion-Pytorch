@@ -71,7 +71,7 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, required=True, help="Directory containing config.yaml")
     parser.add_argument("--prompt", type=str, default=None, help="Conditional Prompt for the Stable Diffusion Model")
     parser.add_argument("--num_images", type=int, default=1, help="Number of images to generate")
-    parser.add_argument("--save", type=str, default="output", help="Directory to save generated images")
+    parser.add_argument("--output", type=str, default="output/", help="Directory to save generated images")
     
     args = parser.parse_args()
     
